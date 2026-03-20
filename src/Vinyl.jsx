@@ -2,13 +2,11 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import {
   fetchSavedAlbums,
   fetchAlbum,
-  playTrack,
-  pausePlayback,
-  getCurrentPlayback,
   getAccessToken,
   normalizeAlbum,
   logout,
 } from './spotify.js'
+import { useSpotifyPlayer } from './useSpotifyPlayer.js'
 
 const SORT_OPTIONS = [
   { key: 'track', label: '# order' },
@@ -83,11 +81,12 @@ export default function Vinyl({ token, me }) {
   const [loadingTracks, setLoadingTracks] = useState(false)
   const [idx, setIdx] = useState(0)
   const [sort, setSort] = useState('track')
-  const [playingUri, setPlayingUri] = useState(null)
   const [lightbox, setLightbox] = useState(false)
   const [lbScale, setLbScale] = useState(1)
   const [lbOffset, setLbOffset] = useState({ x: 0, y: 0 })
   const [isPinching, setIsPinching] = useState(false)
+
+  const { ready: playerReady, isPlaying, currentTrackUri, play, pause, resume } = useSpotifyPlayer()
 
   const swipeRef = useRef({ startX: null, startY: null })
   const pinchRef = useRef({ dist: null, scale: 1, panX: null, panY: null })
@@ -225,32 +224,15 @@ export default function Vinyl({ token, me }) {
   // ── Playback ──────────────────────────────────────────────────────────
 
   const handlePlayTrack = useCallback(async (trackUri) => {
-    const t = await getAccessToken()
-    if (!t) return
     const album = albums[idx]
-    if (playingUri === trackUri) {
-      await pausePlayback(t)
-      setPlayingUri(null)
+    if (currentTrackUri === trackUri && isPlaying) {
+      await pause()
+    } else if (currentTrackUri === trackUri && !isPlaying) {
+      await resume()
     } else {
-      await playTrack(t, trackUri, album.uri)
-      setPlayingUri(trackUri)
+      await play(trackUri, album.uri)
     }
-  }, [albums, idx, playingUri])
-
-  // Poll playback state
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const t = await getAccessToken()
-      if (!t) return
-      const pb = await getCurrentPlayback(t)
-      if (pb?.item?.uri) {
-        setPlayingUri(pb.is_playing ? pb.item.uri : null)
-      } else {
-        setPlayingUri(null)
-      }
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [])
+  }, [albums, idx, currentTrackUri, isPlaying, play, pause, resume])
 
   // ── Sorted tracks ─────────────────────────────────────────────────────
 
@@ -284,7 +266,7 @@ export default function Vinyl({ token, me }) {
     }
   }
 
-  const playingTrack = album?.tracks.find(t => t.uri === playingUri)
+  const playingTrack = album?.tracks.find(t => t.uri === currentTrackUri)
 
   // ── Render ────────────────────────────────────────────────────────────
 
@@ -414,7 +396,7 @@ export default function Vinyl({ token, me }) {
       </div>
 
       {/* ── Track list ── */}
-      <div style={{ paddingBottom: playingUri ? 100 : 48 }}>
+      <div style={{ paddingBottom: currentTrackUri ? 100 : 48 }}>
         {loadingTracks ? (
           <Spinner />
         ) : sortedTracks.length === 0 ? (
@@ -423,7 +405,7 @@ export default function Vinyl({ token, me }) {
           </div>
         ) : (
           sortedTracks.map((t, i) => {
-            const active = playingUri === t.uri
+            const active = currentTrackUri === t.uri
             return (
               <div
                 key={t.uri}
@@ -467,7 +449,7 @@ export default function Vinyl({ token, me }) {
       </div>
 
       {/* ── Mini player ── */}
-      {playingUri && playingTrack && album && (
+      {currentTrackUri && playingTrack && album && (
         <div style={{
           position: 'fixed', bottom: 0, left: 0, right: 0,
           background: 'rgba(6,6,6,0.97)', backdropFilter: 'blur(24px)',
@@ -486,13 +468,13 @@ export default function Vinyl({ token, me }) {
             <div style={{ fontSize: 10, opacity: 0.38, marginTop: 2 }}>{album.title}</div>
           </div>
           <button
-            onClick={() => handlePlayTrack(playingUri)}
+            onClick={() => handlePlayTrack(currentTrackUri)}
             style={{
               background: 'none', color: '#c084fc', fontSize: 22, padding: '4px 8px',
               fontFamily: 'system-ui',
             }}
           >
-            ⏸
+            {isPlaying ? '⏸' : '▶'}
           </button>
         </div>
       )}
