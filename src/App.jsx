@@ -13,7 +13,7 @@ import Vinyl from './Vinyl.jsx'
 const css = `
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #060606; color: #ede8de;
-    font-family: 'DM Mono', monospace; -webkit-tap-highlight-color: transparent;
+    font-family: 'DM Sans', sans-serif; -webkit-tap-highlight-color: transparent;
     overscroll-behavior: none; }
   ::-webkit-scrollbar { display: none; }
   button { cursor: pointer; -webkit-tap-highlight-color: transparent; border: none; }
@@ -54,8 +54,8 @@ function LoginScreen({ onLogin, noClientId }) {
       </div>
 
       <div style={{
-        fontFamily: "'Cormorant Garamond', serif",
-        fontSize: 42, fontWeight: 300, letterSpacing: 8,
+        fontFamily: "'Syne', sans-serif",
+        fontSize: 38, fontWeight: 700, letterSpacing: 10,
         textTransform: 'uppercase', marginBottom: 10,
       }}>
         Vinyl
@@ -118,8 +118,8 @@ function LoadingScreen() {
       background: '#060606',
     }}>
       <div style={{
-        fontFamily: "'Cormorant Garamond', serif",
-        fontSize: 28, fontWeight: 300, letterSpacing: 6,
+        fontFamily: "'Syne', sans-serif",
+        fontSize: 26, fontWeight: 700, letterSpacing: 8,
         opacity: 0.4, animation: 'pulse 1.5s ease-in-out infinite',
       }}>
         Vinyl

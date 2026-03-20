@@ -48,7 +48,7 @@ function Cover({ album, size, onClick }) {
       {!hasImg && (
         <div style={{
           position: 'absolute', bottom: size * 0.055, left: size * 0.08, right: size * 0.08,
-          fontFamily: "'Cormorant Garamond', serif",
+          fontFamily: "'Syne', sans-serif",
           fontSize: Math.max(10, size * 0.075), fontWeight: 300,
           color: 'rgba(255,255,255,0.85)', lineHeight: 1.2,
           textShadow: '0 1px 8px rgba(0,0,0,0.9)', pointerEvents: 'none',
@@ -300,7 +300,7 @@ export default function Vinyl({ token, me }) {
   if (!albums.length) {
     return (
       <div style={{ minHeight: '100dvh', background: '#060606', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32 }}>
-        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 24, opacity: 0.5 }}>No saved albums</div>
+        <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 24, opacity: 0.5 }}>No saved albums</div>
         <div style={{ fontSize: 11, opacity: 0.3 }}>Spotifyでアルバムを保存してください</div>
       </div>
     )
@@ -311,7 +311,7 @@ export default function Vinyl({ token, me }) {
       minHeight: '100dvh',
       background: '#060606',
       color: '#ede8de',
-      fontFamily: "'DM Mono', monospace",
+      fontFamily: "'DM Sans', sans-serif",
       overflowX: 'hidden',
     }}>
 
@@ -321,14 +321,14 @@ export default function Vinyl({ token, me }) {
           <div style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', opacity: 0.35, marginBottom: 5 }}>
             {me?.display_name || 'Library'}
           </div>
-          <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 27, fontWeight: 400, lineHeight: 1 }}>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 27, fontWeight: 600, lineHeight: 1 }}>
             Saved Albums
           </div>
         </div>
         <button onClick={logout} style={{
           background: 'none', color: 'rgba(255,255,255,0.2)',
           fontSize: 10, letterSpacing: 1, padding: '6px 0',
-          fontFamily: "'DM Mono', monospace",
+          fontFamily: "'DM Sans', sans-serif",
         }}>
           logout
         </button>
@@ -378,7 +378,7 @@ export default function Vinyl({ token, me }) {
       {/* ── Album info ── */}
       {album && (
         <div style={{ textAlign: 'center', padding: '14px 24px 2px' }}>
-          <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 28, fontWeight: 400, letterSpacing: -0.3, lineHeight: 1.2 }}>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 28, fontWeight: 600, letterSpacing: -0.5, lineHeight: 1.2 }}>
             {album.title}
           </div>
           <div style={{ fontSize: 12, opacity: 0.5, marginTop: 5 }}>{album.artist}</div>
@@ -405,7 +405,7 @@ export default function Vinyl({ token, me }) {
               border: `1px solid ${active ? '#c084fc' : 'rgba(255,255,255,0.1)'}`,
               background: active ? 'rgba(192,132,252,0.1)' : 'transparent',
               color: active ? '#c084fc' : 'rgba(255,255,255,0.42)',
-              fontSize: 11, fontFamily: "'DM Mono', monospace",
+              fontSize: 11, fontFamily: "'DM Sans', sans-serif",
               letterSpacing: 0.3, transition: 'all 0.2s', outline: 'none',
             }}>
               {o.label}
@@ -447,7 +447,7 @@ export default function Vinyl({ token, me }) {
 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
-                    fontFamily: "'Cormorant Garamond', serif", fontSize: 17,
+                    fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 500,
                     color: active ? '#c084fc' : '#ede8de',
                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                   }}>
@@ -479,7 +479,7 @@ export default function Vinyl({ token, me }) {
           <Cover album={album} size={42} onClick={() => {}} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
-              fontFamily: "'Cormorant Garamond', serif", fontSize: 17,
+              fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 500,
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {playingTrack.title}
@@ -534,8 +534,8 @@ export default function Vinyl({ token, me }) {
             transition: 'opacity 0.25s', pointerEvents: 'none',
           }}>
             <div style={{
-              fontFamily: "'Cormorant Garamond', serif",
-              fontSize: 24, fontWeight: 300,
+              fontFamily: "'Syne', sans-serif",
+              fontSize: 24, fontWeight: 600,
             }}>
               {album.title}
             </div>
