@@ -13,7 +13,6 @@ import {
 const SORT_OPTIONS = [
   { key: 'track', label: '# order' },
   { key: 'dur',   label: '⏱ length' },
-  { key: 'pop',   label: '★ popular' },
 ]
 
 // ── Cover component ────────────────────────────────────────────────────────
