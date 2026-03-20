@@ -2,8 +2,7 @@
 // PKCE OAuth 2.0 — no backend required
 
 export const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID || ''
-export const REDIRECT_URI = 'http://127.0.0.1:5173/'
-
+export const REDIRECT_URI = window.location.origin + '/'
 const SCOPES = [
   'user-library-read',
   'user-read-playback-state',
