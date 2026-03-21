@@ -416,21 +416,28 @@ export default function Vinyl({ token, me }) {
         ))}
       </div>
 
-      {/* ── Dot nav ── */}
+      {/* ── Nav counter ── */}
       {!gridMode && (
-      <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 7, alignItems: 'center' }}>
-        {albums.slice(0, Math.min(albums.length, 12)).map((_, i) => (
-          <div key={i} onClick={() => navigate(i)} style={{
-            width: i === idx ? 22 : 6, height: 6, borderRadius: 3,
-            background: i === idx ? '#c084fc' : 'rgba(255,255,255,0.18)',
-            transition: 'all 0.32s ease', cursor: 'pointer',
-          }} />
-        ))}
-        {albums.length > 12 && (
-          <div style={{ fontSize: 9, opacity: 0.3, letterSpacing: 1 }}>
-            +{albums.length - 12}
-          </div>
-        )}
+      <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16 }}>
+        <button
+          onClick={() => idx > 0 && navigate(idx - 1)}
+          style={{
+            background: 'none', border: 'none',
+            color: idx > 0 ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.1)',
+            fontSize: 18, padding: '4px 10px', cursor: idx > 0 ? 'pointer' : 'default',
+          }}
+        >‹</button>
+        <div style={{ fontSize: 11, opacity: 0.35, letterSpacing: 2, fontVariantNumeric: 'tabular-nums' }}>
+          {idx + 1} / {albums.length}
+        </div>
+        <button
+          onClick={() => idx < albums.length - 1 && navigate(idx + 1)}
+          style={{
+            background: 'none', border: 'none',
+            color: idx < albums.length - 1 ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.1)',
+            fontSize: 18, padding: '4px 10px', cursor: idx < albums.length - 1 ? 'pointer' : 'default',
+          }}
+        >›</button>
       </div>
       )}
 
