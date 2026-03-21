@@ -155,8 +155,9 @@ export async function fetchSavedAlbums(token, limit = 50, offset = 0) {
 }
 
 // Fetch artist's albums
-export async function fetchArtistAlbums(token, artistId, limit = 20) {
-  const url = `https://api.spotify.com/v1/artists/${artistId}/albums?limit=${limit}`
+export async function fetchArtistAlbums(token, artistId) {
+  // Development modeではlimitの最大値が10
+  const url = `https://api.spotify.com/v1/artists/${artistId}/albums?limit=10`
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   })
