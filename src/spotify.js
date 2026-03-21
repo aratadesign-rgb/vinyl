@@ -157,7 +157,7 @@ export async function fetchSavedAlbums(token, limit = 50, offset = 0) {
 // Fetch artist's albums
 export async function fetchArtistAlbums(token, artistId, limit = 50) {
   return apiFetch(
-    `/artists/${artistId}/albums?include_groups=album,single&limit=${limit}`,
+    `/artists/${artistId}/albums?include_groups=album%2Csingle&limit=${limit}`,
     token
   )
 }

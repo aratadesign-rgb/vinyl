@@ -435,15 +435,15 @@ export default function Vinyl({ token, me }) {
             </div>
           )}
         </div>
-        {/* グリッドボタン — ドットナビの右端 */}
+        {/* グリッドボタン — ドットナビ行の右端 */}
         <button
           onClick={() => setGridMode(true)}
           style={{
             position: 'absolute', right: 16,
-            width: 32, height: 32, borderRadius: 8,
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            color: 'rgba(255,255,255,0.5)', fontSize: 14,
+            width: 30, height: 30, borderRadius: 7,
+            background: 'transparent',
+            border: '1px solid rgba(255,255,255,0.15)',
+            color: 'rgba(255,255,255,0.4)', fontSize: 13,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer',
           }}
