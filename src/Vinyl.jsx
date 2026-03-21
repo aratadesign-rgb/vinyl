@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import {
   fetchSavedAlbums,
+  fetchArtistAlbums,
   fetchAlbum,
   getAccessToken,
   normalizeAlbum,
@@ -81,14 +82,20 @@ export default function Vinyl({ token, me }) {
   const [loadingTracks, setLoadingTracks] = useState(false)
   const [idx, setIdx] = useState(0)
   const [sort, setSort] = useState('track')
+  const [gridMode, setGridMode] = useState(false)
   const [lightbox, setLightbox] = useState(false)
   const [lbScale, setLbScale] = useState(1)
   const [lbOffset, setLbOffset] = useState({ x: 0, y: 0 })
   const [isPinching, setIsPinching] = useState(false)
 
+  // library | artist view
+  const [viewMode, setViewMode] = useState('library') // 'library' | 'artist'
+  const [libraryAlbums, setLibraryAlbums] = useState([]) // ライブラリを保持
+  const [currentArtist, setCurrentArtist] = useState(null) // { name, id }
+
   const { ready: playerReady, isPlaying, currentTrackUri, play, pause, resume } = useSpotifyPlayer()
 
-  const swipeRef = useRef({ startX: null, startY: null })
+  const swipeRef = useRef({ startX: null, startY: null, startTime: null, lastX: null, velocity: 0 })
   const pinchRef = useRef({ dist: null, scale: 1, panX: null, panY: null })
   const carouselRef = useRef(null)
   const lbRef = useRef(null)
@@ -103,6 +110,7 @@ export default function Vinyl({ token, me }) {
         const data = await fetchSavedAlbums(t, 50, 0)
         const normalized = data.items.map(normalizeAlbum)
         setAlbums(normalized)
+        setLibraryAlbums(normalized)
         // Load tracks for first album if missing
         if (normalized.length > 0 && normalized[0].tracks.length === 0) {
           loadTracksFor(normalized[0].id, t, normalized)
@@ -134,9 +142,6 @@ export default function Vinyl({ token, me }) {
   const navigate = useCallback(async (newIdx) => {
     setIdx(newIdx)
     setSort('track')
-    setPlayingUri(null)
-
-    // Lazy-load tracks for newly selected album
     setAlbums(prev => {
       const album = prev[newIdx]
       if (album && album.tracks.length === 0) {
@@ -145,6 +150,37 @@ export default function Vinyl({ token, me }) {
       return prev
     })
   }, [])
+
+  const goToArtist = useCallback(async (artistId, artistName) => {
+    setLoading(true)
+    setGridMode(false)
+    try {
+      const t = await getAccessToken()
+      const data = await fetchArtistAlbums(t, artistId, 50)
+      const normalized = data.items.map(normalizeAlbum)
+      setAlbums(normalized)
+      setIdx(0)
+      setSort('track')
+      setCurrentArtist({ id: artistId, name: artistName })
+      setViewMode('artist')
+      if (normalized.length > 0 && normalized[0].tracks.length === 0) {
+        loadTracksFor(normalized[0].id)
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const backToLibrary = useCallback(() => {
+    setAlbums(libraryAlbums)
+    setIdx(0)
+    setSort('track')
+    setViewMode('library')
+    setCurrentArtist(null)
+    setGridMode(false)
+  }, [libraryAlbums])
 
   // ── Carousel touch ────────────────────────────────────────────────────
 
@@ -161,16 +197,36 @@ export default function Vinyl({ token, me }) {
   }, [])
 
   const onCarouselTouchStart = useCallback((e) => {
-    swipeRef.current.startX = e.touches[0].clientX
+    const x = e.touches[0].clientX
+    swipeRef.current.startX = x
     swipeRef.current.startY = e.touches[0].clientY
+    swipeRef.current.startTime = Date.now()
+    swipeRef.current.lastX = x
+    swipeRef.current.velocity = 0
+  }, [])
+
+  const onCarouselTouchMove = useCallback((e) => {
+    const x = e.touches[0].clientX
+    swipeRef.current.velocity = x - swipeRef.current.lastX
+    swipeRef.current.lastX = x
   }, [])
 
   const onCarouselTouchEnd = useCallback((e) => {
     if (swipeRef.current.startX === null) return
     const dx = e.changedTouches[0].clientX - swipeRef.current.startX
-    if (Math.abs(dx) > 44) {
-      if (dx < 0 && idx < albums.length - 1) navigate(idx + 1)
-      else if (dx > 0 && idx > 0) navigate(idx - 1)
+    const elapsed = Date.now() - swipeRef.current.startTime
+    const velocity = swipeRef.current.velocity
+
+    // フリック（速い）かスワイプ（距離）で判定
+    const isFlick = Math.abs(velocity) > 6 && elapsed < 300
+    const isSwipe = Math.abs(dx) > 44
+
+    if (isFlick || isSwipe) {
+      const dir = (isFlick ? velocity : dx) < 0 ? 1 : -1
+      // 速いフリックなら2枚飛ばす
+      const step = isFlick && Math.abs(velocity) > 14 ? 2 : 1
+      const next = Math.max(0, Math.min(albums.length - 1, idx + dir * step))
+      if (next !== idx) navigate(next)
     }
     swipeRef.current.startX = null
   }, [idx, albums.length, navigate])
@@ -299,16 +355,29 @@ export default function Vinyl({ token, me }) {
       {/* ── Header ── */}
       <div style={{ padding: '24px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div>
+          {viewMode === 'artist' && (
+            <button onClick={backToLibrary} style={{
+              background: 'none', border: 'none', color: 'rgba(255,255,255,0.45)',
+              fontSize: 11, letterSpacing: 1, padding: '0 0 7px 0',
+              fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 5,
+            }}>
+              ← Library
+            </button>
+          )}
           <div style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', opacity: 0.35, marginBottom: 5 }}>
-            {me?.display_name || 'Library'}
+            {viewMode === 'artist' ? 'Discography' : (me?.display_name || 'Library')}
           </div>
           <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 27, fontWeight: 600, lineHeight: 1 }}>
-            Saved Albums
+            {viewMode === 'artist' ? currentArtist?.name : 'Saved Albums'}
           </div>
         </div>
         <button onClick={logout} style={{
-          background: 'none', color: 'rgba(255,255,255,0.2)',
-          fontSize: 10, letterSpacing: 1, padding: '6px 0',
+          background: 'rgba(255,255,255,0.92)',
+          border: '1px solid rgba(255,255,255,0.8)',
+          color: '#1a1a1a',
+          fontSize: 11, letterSpacing: 1, padding: '6px 14px',
+          borderRadius: 100,
           fontFamily: "'DM Sans', sans-serif",
         }}>
           logout
@@ -318,8 +387,9 @@ export default function Vinyl({ token, me }) {
       {/* ── CoverFlow ── */}
       <div
         ref={carouselRef}
-        style={{ position: 'relative', height: 268, overflow: 'hidden', marginTop: 26 }}
+        style={{ position: 'relative', height: 296, overflow: 'hidden', marginTop: 26 }}
         onTouchStart={onCarouselTouchStart}
+        onTouchMove={onCarouselTouchMove}
         onTouchEnd={onCarouselTouchEnd}
       >
         <div style={{
@@ -330,7 +400,7 @@ export default function Vinyl({ token, me }) {
           <div key={a.id} style={cardStyle(i)}>
             <Cover
               album={a}
-              size={196}
+              size={220}
               onClick={i === idx
                 ? () => { setLbScale(1); setLbOffset({ x: 0, y: 0 }); setLightbox(true) }
                 : () => navigate(i)
@@ -338,9 +408,26 @@ export default function Vinyl({ token, me }) {
             />
           </div>
         ))}
+        {/* グリッド切り替えボタン — メインジャケット右下 */}
+        <button
+          onClick={() => setGridMode(m => !m)}
+          style={{
+            position: 'absolute',
+            bottom: 68, right: 'calc(50% - 110px - 8px)',
+            width: 32, height: 32, borderRadius: 8,
+            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            color: 'rgba(255,255,255,0.7)', fontSize: 14,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 25, cursor: 'pointer',
+          }}
+        >
+          {gridMode ? '⊟' : '⊞'}
+        </button>
       </div>
 
       {/* ── Dot nav ── */}
+      {!gridMode && (
       <div style={{ display: 'flex', justifyContent: 'center', gap: 7, marginTop: 12 }}>
         {albums.slice(0, Math.min(albums.length, 12)).map((_, i) => (
           <div key={i} onClick={() => navigate(i)} style={{
@@ -355,6 +442,57 @@ export default function Vinyl({ token, me }) {
           </div>
         )}
       </div>
+      )}
+
+      {/* ── Grid mode ── */}
+      {gridMode && (
+        <div style={{
+          position: 'fixed', inset: 0, top: 0,
+          background: '#060606', zIndex: 150,
+          overflowY: 'auto', padding: '56px 4px 32px',
+        }}>
+          {/* 閉じるボタン */}
+          <button onClick={() => setGridMode(false)} style={{
+            position: 'fixed', top: 16, right: 16,
+            width: 36, height: 36, borderRadius: '50%',
+            background: 'rgba(255,255,255,0.1)', border: 'none',
+            color: 'rgba(255,255,255,0.7)', fontSize: 16,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 160,
+          }}>✕</button>
+          <div style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', opacity: 0.3, textAlign: 'center', marginBottom: 16 }}>
+            {albums.length} albums
+          </div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 3,
+          }}>
+            {albums.map((a, i) => (
+              <div
+                key={a.id}
+                onClick={() => { setIdx(i); setGridMode(false); if (a.tracks.length === 0) loadTracksFor(a.id) }}
+                style={{
+                  aspectRatio: '1', position: 'relative', overflow: 'hidden',
+                  cursor: 'pointer',
+                  outline: i === idx ? '2px solid #c084fc' : 'none',
+                  outlineOffset: -2,
+                }}
+              >
+                {a.image
+                  ? <img src={a.imageMd || a.image} alt={a.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} loading="lazy" />
+                  : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(145deg,#1a0a2e,#3a0a5e)', display: 'flex', alignItems: 'flex-end', padding: 6 }}>
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', lineHeight: 1.2, fontFamily: "'Syne',sans-serif" }}>{a.title}</div>
+                    </div>
+                }
+                {i === idx && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(192,132,252,0.15)' }} />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Album info ── */}
       {album && (
@@ -362,8 +500,25 @@ export default function Vinyl({ token, me }) {
           <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 28, fontWeight: 600, letterSpacing: -0.5, lineHeight: 1.2 }}>
             {album.title}
           </div>
-          <div style={{ fontSize: 12, opacity: 0.5, marginTop: 5 }}>{album.artist}</div>
-          <div style={{ fontSize: 11, opacity: 0.3, letterSpacing: 2, textTransform: 'uppercase', marginTop: 4 }}>
+          {/* アーティスト名 / More by リンク */}
+          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            <div style={{ fontSize: 12, opacity: 0.5 }}>{album.artist}</div>
+            {viewMode === 'library' && album.artistId && (
+              <button
+                onClick={() => goToArtist(album.artistId, album.artist)}
+                style={{
+                  background: 'none', border: '1px solid rgba(255,255,255,0.18)',
+                  color: 'rgba(255,255,255,0.55)', fontSize: 10, letterSpacing: 0.8,
+                  padding: '3px 10px', borderRadius: 100,
+                  fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                More by {album.artist.split(',')[0]}
+              </button>
+            )}
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.3, letterSpacing: 2, textTransform: 'uppercase', marginTop: 6 }}>
             {album.year} · {album.tracks.length} tracks
           </div>
           <div style={{ fontSize: 10, opacity: 0.18, marginTop: 10, letterSpacing: 0.3 }}>
@@ -448,7 +603,21 @@ export default function Vinyl({ token, me }) {
         )}
       </div>
 
-      {/* ── Mini player ── */}
+      {/* ── Back to Library (artist view) ── */}
+      {viewMode === 'artist' && (
+        <div style={{ padding: '8px 22px 48px', textAlign: 'center' }}>
+          <button onClick={backToLibrary} style={{
+            background: 'none',
+            border: '1px solid rgba(255,255,255,0.12)',
+            color: 'rgba(255,255,255,0.4)',
+            fontSize: 11, letterSpacing: 1,
+            padding: '10px 28px', borderRadius: 100,
+            fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
+          }}>
+            ← Back to Library
+          </button>
+        </div>
+      )}
       {currentTrackUri && playingTrack && album && (
         <div style={{
           position: 'fixed', bottom: 0, left: 0, right: 0,
