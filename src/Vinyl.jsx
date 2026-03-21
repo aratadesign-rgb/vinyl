@@ -416,8 +416,6 @@ export default function Vinyl({ token, me }) {
         ))}
       </div>
 
-      </div>
-
       {/* ── Dot nav ── */}
       {!gridMode && (
       <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 7, alignItems: 'center' }}>
