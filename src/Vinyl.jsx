@@ -152,11 +152,18 @@ export default function Vinyl({ token, me }) {
   }, [])
 
   const goToArtist = useCallback(async (artistId, artistName) => {
+    console.log('[Vinyl] goToArtist called:', { artistId, artistName })
+    if (!artistId) {
+      console.warn('[Vinyl] No artistId available')
+      return
+    }
     setLoading(true)
     setGridMode(false)
     try {
       const t = await getAccessToken()
+      console.log('[Vinyl] fetching artist albums for', artistId)
       const data = await fetchArtistAlbums(t, artistId, 50)
+      console.log('[Vinyl] artist albums:', data?.items?.length)
       const normalized = data.items.map(normalizeAlbum)
       setAlbums(normalized)
       setIdx(0)
@@ -167,7 +174,7 @@ export default function Vinyl({ token, me }) {
         loadTracksFor(normalized[0].id)
       }
     } catch (e) {
-      console.error(e)
+      console.error('[Vinyl] goToArtist error:', e)
     } finally {
       setLoading(false)
     }
@@ -188,9 +195,15 @@ export default function Vinyl({ token, me }) {
     const el = carouselRef.current
     if (!el) return
     const onMove = (e) => {
+      if (!e.touches[0]) return
       const dx = Math.abs(e.touches[0].clientX - (swipeRef.current.startX || 0))
       const dy = Math.abs(e.touches[0].clientY - (swipeRef.current.startY || 0))
-      if (dx > dy && dx > 8) e.preventDefault()
+      if (dx > dy && dx > 8) {
+        e.preventDefault()
+        // velocity tracking here (passive:false なのでここで取れる)
+        swipeRef.current.velocity = e.touches[0].clientX - swipeRef.current.lastX
+        swipeRef.current.lastX = e.touches[0].clientX
+      }
     }
     el.addEventListener('touchmove', onMove, { passive: false })
     return () => el.removeEventListener('touchmove', onMove)
@@ -203,12 +216,6 @@ export default function Vinyl({ token, me }) {
     swipeRef.current.startTime = Date.now()
     swipeRef.current.lastX = x
     swipeRef.current.velocity = 0
-  }, [])
-
-  const onCarouselTouchMove = useCallback((e) => {
-    const x = e.touches[0].clientX
-    swipeRef.current.velocity = x - swipeRef.current.lastX
-    swipeRef.current.lastX = x
   }, [])
 
   const onCarouselTouchEnd = useCallback((e) => {
@@ -389,7 +396,6 @@ export default function Vinyl({ token, me }) {
         ref={carouselRef}
         style={{ position: 'relative', height: 296, overflow: 'hidden', marginTop: 26 }}
         onTouchStart={onCarouselTouchStart}
-        onTouchMove={onCarouselTouchMove}
         onTouchEnd={onCarouselTouchEnd}
       >
         <div style={{
@@ -408,39 +414,42 @@ export default function Vinyl({ token, me }) {
             />
           </div>
         ))}
-        {/* グリッド切り替えボタン — 右端の黒スペース */}
-        <button
-          onClick={() => setGridMode(m => !m)}
-          style={{
-            position: 'absolute',
-            bottom: 72, right: 14,
-            width: 34, height: 34, borderRadius: 8,
-            background: 'rgba(20,20,20,0.9)', backdropFilter: 'blur(8px)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            color: 'rgba(255,255,255,0.6)', fontSize: 15,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 25, cursor: 'pointer',
-          }}
-        >
-          {gridMode ? '⊟' : '⊞'}
-        </button>
       </div>
 
-      {/* ── Dot nav ── */}
+      </div>
+
+      {/* ── Dot nav + Grid button ── */}
       {!gridMode && (
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 7, marginTop: 12 }}>
-        {albums.slice(0, Math.min(albums.length, 12)).map((_, i) => (
-          <div key={i} onClick={() => navigate(i)} style={{
-            width: i === idx ? 22 : 6, height: 6, borderRadius: 3,
-            background: i === idx ? '#c084fc' : 'rgba(255,255,255,0.18)',
-            transition: 'all 0.32s ease', cursor: 'pointer',
-          }} />
-        ))}
-        {albums.length > 12 && (
-          <div style={{ fontSize: 9, opacity: 0.3, alignSelf: 'center', letterSpacing: 1 }}>
-            +{albums.length - 12}
-          </div>
-        )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 14, padding: '0 16px', position: 'relative' }}>
+        <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+          {albums.slice(0, Math.min(albums.length, 12)).map((_, i) => (
+            <div key={i} onClick={() => navigate(i)} style={{
+              width: i === idx ? 22 : 6, height: 6, borderRadius: 3,
+              background: i === idx ? '#c084fc' : 'rgba(255,255,255,0.18)',
+              transition: 'all 0.32s ease', cursor: 'pointer',
+            }} />
+          ))}
+          {albums.length > 12 && (
+            <div style={{ fontSize: 9, opacity: 0.3, letterSpacing: 1 }}>
+              +{albums.length - 12}
+            </div>
+          )}
+        </div>
+        {/* グリッドボタン — ドットナビの右端 */}
+        <button
+          onClick={() => setGridMode(true)}
+          style={{
+            position: 'absolute', right: 16,
+            width: 32, height: 32, borderRadius: 8,
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            color: 'rgba(255,255,255,0.5)', fontSize: 14,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          ⊞
+        </button>
       </div>
       )}
 
