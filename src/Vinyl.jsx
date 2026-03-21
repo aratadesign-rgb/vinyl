@@ -408,16 +408,16 @@ export default function Vinyl({ token, me }) {
             />
           </div>
         ))}
-        {/* グリッド切り替えボタン — メインジャケット右下 */}
+        {/* グリッド切り替えボタン — 右端の黒スペース */}
         <button
           onClick={() => setGridMode(m => !m)}
           style={{
             position: 'absolute',
-            bottom: 68, right: 'calc(50% - 110px - 8px)',
-            width: 32, height: 32, borderRadius: 8,
-            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)',
-            border: '1px solid rgba(255,255,255,0.15)',
-            color: 'rgba(255,255,255,0.7)', fontSize: 14,
+            bottom: 72, right: 14,
+            width: 34, height: 34, borderRadius: 8,
+            background: 'rgba(20,20,20,0.9)', backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            color: 'rgba(255,255,255,0.6)', fontSize: 15,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 25, cursor: 'pointer',
           }}
@@ -503,9 +503,12 @@ export default function Vinyl({ token, me }) {
           {/* アーティスト名 / More by リンク */}
           <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
             <div style={{ fontSize: 12, opacity: 0.5 }}>{album.artist}</div>
-            {viewMode === 'library' && album.artistId && (
+            {viewMode === 'library' && (
               <button
-                onClick={() => goToArtist(album.artistId, album.artist)}
+                onClick={() => album.artistId
+                  ? goToArtist(album.artistId, album.artist)
+                  : alert('Artist info not available')
+                }
                 style={{
                   background: 'none', border: '1px solid rgba(255,255,255,0.18)',
                   color: 'rgba(255,255,255,0.55)', fontSize: 10, letterSpacing: 0.8,
@@ -603,9 +606,29 @@ export default function Vinyl({ token, me }) {
         )}
       </div>
 
-      {/* ── Back to Library (artist view) ── */}
-      {viewMode === 'artist' && (
-        <div style={{ padding: '8px 22px 48px', textAlign: 'center' }}>
+      {/* ── Bottom actions ── */}
+      <div style={{ padding: '8px 22px 52px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+        {/* More by — libraryモードのみ */}
+        {viewMode === 'library' && album && (
+          <button
+            onClick={() => album.artistId
+              ? goToArtist(album.artistId, album.artist)
+              : alert('Artist info not available')
+            }
+            style={{
+              background: 'none',
+              border: '1px solid rgba(255,255,255,0.15)',
+              color: 'rgba(255,255,255,0.45)',
+              fontSize: 11, letterSpacing: 0.8,
+              padding: '10px 28px', borderRadius: 100,
+              fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
+            }}
+          >
+            More by {album?.artist.split(',')[0]}
+          </button>
+        )}
+        {/* Back to Library — artistモードのみ */}
+        {viewMode === 'artist' && (
           <button onClick={backToLibrary} style={{
             background: 'none',
             border: '1px solid rgba(255,255,255,0.12)',
@@ -616,8 +639,8 @@ export default function Vinyl({ token, me }) {
           }}>
             ← Back to Library
           </button>
-        </div>
-      )}
+        )}
+      </div>
       {currentTrackUri && playingTrack && album && (
         <div style={{
           position: 'fixed', bottom: 0, left: 0, right: 0,
