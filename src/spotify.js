@@ -156,12 +156,16 @@ export async function fetchSavedAlbums(token, limit = 50, offset = 0) {
 
 // Fetch artist's albums
 export async function fetchArtistAlbums(token, artistId, limit = 50) {
-  // include_groups をクエリパラメータとして正しく渡す
-  const params = new URLSearchParams({
-    include_groups: 'album,single',
-    limit: String(limit),
+  // apiFetchを使わず直接fetchしてカンマのエンコードを回避
+  const url = `https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single&limit=${limit}`
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
   })
-  return apiFetch(`/artists/${artistId}/albums?${params}`, token)
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Artist albums API error: ${res.status} ${text}`)
+  }
+  return res.json()
 }
 
 // Fetch single album with tracks
