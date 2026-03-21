@@ -418,39 +418,41 @@ export default function Vinyl({ token, me }) {
 
       </div>
 
-      {/* ── Dot nav + Grid button ── */}
+      {/* ── Dot nav ── */}
       {!gridMode && (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 14, padding: '0 16px', position: 'relative' }}>
-        <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
-          {albums.slice(0, Math.min(albums.length, 12)).map((_, i) => (
-            <div key={i} onClick={() => navigate(i)} style={{
-              width: i === idx ? 22 : 6, height: 6, borderRadius: 3,
-              background: i === idx ? '#c084fc' : 'rgba(255,255,255,0.18)',
-              transition: 'all 0.32s ease', cursor: 'pointer',
-            }} />
-          ))}
-          {albums.length > 12 && (
-            <div style={{ fontSize: 9, opacity: 0.3, letterSpacing: 1 }}>
-              +{albums.length - 12}
-            </div>
-          )}
-        </div>
-        {/* グリッドボタン — ドットナビ行の右端 */}
-        <button
-          onClick={() => setGridMode(true)}
-          style={{
-            position: 'absolute', right: 16,
-            width: 30, height: 30, borderRadius: 7,
-            background: 'transparent',
-            border: '1px solid rgba(255,255,255,0.15)',
-            color: 'rgba(255,255,255,0.4)', fontSize: 13,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
-          }}
-        >
-          ⊞
-        </button>
+      <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 7, alignItems: 'center' }}>
+        {albums.slice(0, Math.min(albums.length, 12)).map((_, i) => (
+          <div key={i} onClick={() => navigate(i)} style={{
+            width: i === idx ? 22 : 6, height: 6, borderRadius: 3,
+            background: i === idx ? '#c084fc' : 'rgba(255,255,255,0.18)',
+            transition: 'all 0.32s ease', cursor: 'pointer',
+          }} />
+        ))}
+        {albums.length > 12 && (
+          <div style={{ fontSize: 9, opacity: 0.3, letterSpacing: 1 }}>
+            +{albums.length - 12}
+          </div>
+        )}
       </div>
+      )}
+
+      {/* ── Grid button — ドットナビの下、右寄せ ── */}
+      {!gridMode && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 18px 0' }}>
+          <button
+            onClick={() => setGridMode(true)}
+            style={{
+              width: 30, height: 30, borderRadius: 7,
+              background: 'transparent',
+              border: '1px solid rgba(255,255,255,0.15)',
+              color: 'rgba(255,255,255,0.4)', fontSize: 13,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            ⊞
+          </button>
+        </div>
       )}
 
       {/* ── Grid mode ── */}
@@ -684,6 +686,10 @@ export default function Vinyl({ token, me }) {
       {lightbox && album && (
         <div
           ref={lbRef}
+          onClick={(e) => {
+            // 背景タップで閉じる（ジャケット自体のタップは除外）
+            if (e.target === lbRef.current) setLightbox(false)
+          }}
           style={{
             position: 'fixed', inset: 0,
             background: 'rgba(0,0,0,0.97)', zIndex: 300,
