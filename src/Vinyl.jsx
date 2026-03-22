@@ -2,8 +2,9 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import {
   fetchSavedAlbums,
   fetchFollowedArtists,
+  fetchArtist,
   fetchArtistAlbums,
-  fetchRelatedArtists,
+  searchArtistsByGenre,
   searchArtists,
   fetchAlbum,
   getAccessToken,
@@ -170,24 +171,30 @@ export default function Vinyl({ token, me }) {
   }, [])
 
   const goToArtist = useCallback(async (artistId, artistName) => {
-    console.log('[Vinyl] goToArtist called:', { artistId, artistName })
     if (!artistId) return
     setLoading(true)
     setGridMode(false)
     setRelatedArtists([])
     try {
       const t = await getAccessToken()
-      const [albumData, relatedData] = await Promise.all([
+      // アルバムとアーティスト情報を並列取得
+      const [albumData, artistData] = await Promise.all([
         fetchArtistAlbums(t, artistId),
-        fetchRelatedArtists(t, artistId).catch(() => ({ artists: [] })),
+        fetchArtist(t, artistId).catch(() => null),
       ])
       const normalized = albumData.items.map(normalizeAlbum)
       setAlbums(normalized)
       setIdx(0)
       setSort('track')
-      setCurrentArtist({ id: artistId, name: artistName })
+      setCurrentArtist({ id: artistId, name: artistName, genres: artistData?.genres || [] })
       setViewMode('artist')
-      setRelatedArtists(relatedData.artists?.slice(0, 8) || [])
+      // ジャンルがあれば同ジャンルのアーティストを非同期で検索
+      const genre = artistData?.genres?.[0]
+      if (genre) {
+        searchArtistsByGenre(t, genre, artistName)
+          .then(data => setRelatedArtists(data.artists?.items || []))
+          .catch(() => {})
+      }
       if (normalized.length > 0 && normalized[0].tracks.length === 0) {
         loadTracksFor(normalized[0].id)
       }
@@ -222,13 +229,21 @@ export default function Vinyl({ token, me }) {
     }
   }, [followedArtists.length])
 
-  // ── Download helpers ──────────────────────────────────────────────────
+  const [gridSaveModal, setGridSaveModal] = useState(false)
 
-  const downloadImage = useCallback(async (url, filename) => {
+  // ── Save helpers ──────────────────────────────────────────────────────
+
+  const saveImage = useCallback(async (url, filename) => {
     try {
-      // CORSを回避するためblobで取得
       const res = await fetch(url)
       const blob = await res.blob()
+      const file = new File([blob], filename, { type: 'image/jpeg' })
+      // Web Share API (iOS/Android → 写真アプリに保存できる)
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: filename })
+        return
+      }
+      // フォールバック：<a download>
       const blobUrl = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = blobUrl
@@ -237,30 +252,21 @@ export default function Vinyl({ token, me }) {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(blobUrl)
-    } catch {
-      // fetchが失敗した場合は新しいタブで開く（手動保存）
-      window.open(url, '_blank')
+    } catch (e) {
+      if (e?.name !== 'AbortError') window.open(url, '_blank')
     }
   }, [])
 
-  const downloadSingle = useCallback((album) => {
+  const saveSingle = useCallback((album) => {
     if (!album.image) return
     const filename = `${album.artist} - ${album.title}.jpg`.replace(/[/\\?%*:|"<>]/g, '-')
-    downloadImage(album.image, filename)
-  }, [downloadImage])
+    saveImage(album.image, filename)
+  }, [saveImage])
 
-  const downloadSelected = useCallback(async () => {
-    setSaving(true)
-    const targets = albums.filter((a, i) => gridSelected.has(i) && a.image)
-    for (const a of targets) {
-      const filename = `${a.artist} - ${a.title}.jpg`.replace(/[/\\?%*:|"<>]/g, '-')
-      await downloadImage(a.image, filename)
-      await new Promise(r => setTimeout(r, 300)) // 連続DL間隔
-    }
-    setSaving(false)
-    setGridSelected(new Set())
-    setGridSelecting(false)
-  }, [albums, gridSelected, downloadImage])
+  // グリッド一括保存：モーダルで一覧表示 → ユーザーが長押しで個別保存
+  const openGridSaveModal = useCallback(() => {
+    setGridSaveModal(true)
+  }, [])
 
   // ── Search ────────────────────────────────────────────────────────────
 
@@ -762,18 +768,16 @@ export default function Vinyl({ token, me }) {
               zIndex: 170,
             }}>
               <button
-                onClick={downloadSelected}
-                disabled={saving}
+                onClick={openGridSaveModal}
                 style={{
                   width: '100%', padding: '14px',
-                  background: saving ? 'rgba(192,132,252,0.3)' : '#c084fc',
+                  background: '#c084fc',
                   border: 'none', borderRadius: 12,
-                  color: saving ? 'rgba(255,255,255,0.5)' : '#000',
-                  fontSize: 14, fontWeight: 600,
-                  fontFamily: "'DM Sans', sans-serif", cursor: saving ? 'default' : 'pointer',
+                  color: '#000', fontSize: 14, fontWeight: 600,
+                  fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
                 }}
               >
-                {saving ? `Saving... (${gridSelected.size})` : `↓ Save ${gridSelected.size} covers`}
+                ⬇ Save {gridSelected.size} covers
               </button>
             </div>
           )}
@@ -935,7 +939,9 @@ export default function Vinyl({ token, me }) {
             fontSize: 10, letterSpacing: 3, textTransform: 'uppercase',
             opacity: 0.3, padding: '0 22px 14px',
           }}>
-            Related Artists
+            {currentArtist?.genres?.[0]
+              ? `More ${currentArtist.genres[0]}`
+              : 'Similar Artists'}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {relatedArtists.map(artist => (
@@ -1008,6 +1014,81 @@ export default function Vinyl({ token, me }) {
           >
             {isPlaying ? '⏸' : '▶'}
           </button>
+        </div>
+      )}
+
+      {/* ── Grid save modal ── */}
+      {gridSaveModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(6,6,6,0.98)',
+          zIndex: 500, display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '52px 20px 16px',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            <div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 17, fontWeight: 600 }}>
+                Save Covers
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.35, marginTop: 4 }}>
+                iOSは長押し → 写真に保存 / Androidはタップしてシェア
+              </div>
+            </div>
+            <button onClick={() => {
+              setGridSaveModal(false)
+              setGridSelected(new Set())
+              setGridSelecting(false)
+            }} style={{
+              background: 'none', border: 'none',
+              color: 'rgba(255,255,255,0.5)', fontSize: 13,
+              fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
+            }}>
+              Done
+            </button>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px 48px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+              {albums
+                .filter((_, i) => gridSelected.has(i))
+                .map(a => a.image ? (
+                  <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {/* 長押し保存用：img直接表示 */}
+                    <img
+                      src={a.image}
+                      alt={a.title}
+                      style={{
+                        width: '100%', aspectRatio: '1', objectFit: 'cover',
+                        borderRadius: 8,
+                      }}
+                      onTouchStart={() => {}} // タッチ有効化
+                    />
+                    {/* Androidはタップでシェア */}
+                    <button
+                      onClick={() => saveSingle(a)}
+                      style={{
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 8, padding: '8px',
+                        color: 'rgba(255,255,255,0.6)', fontSize: 11,
+                        fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                        <line x1="8" y1="1" x2="8" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                        <polyline points="4,8 8,12 12,8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                        <line x1="2" y1="15" x2="14" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                      </svg>
+                      {a.artist.split(',')[0]} — {a.title}
+                    </button>
+                  </div>
+                ) : null)
+              }
+            </div>
+          </div>
         </div>
       )}
 
@@ -1134,26 +1215,37 @@ export default function Vinyl({ token, me }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10,
           }}>✕</button>
 
-          {/* 保存ボタン */}
-          {album.image && (
-            <button
-              onClick={() => downloadSingle(album)}
-              style={{
-                position: 'absolute', top: 52, left: 22,
-                width: 38, height: 38, borderRadius: '50%',
-                background: 'rgba(255,255,255,0.08)',
-                color: 'rgba(255,255,255,0.75)', fontSize: 16,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10,
-              }}
-            >↓</button>
-          )}
+          <div style={{ position: 'relative', display: 'inline-block' }}>
+            <div style={{
+              transform: `scale(${lbScale}) translate(${lbOffset.x / lbScale}px, ${lbOffset.y / lbScale}px)`,
+              transition: isPinching ? 'none' : 'transform 0.3s ease',
+              willChange: 'transform',
+            }}>
+              <Cover album={album} size={300} onClick={() => {}} />
+            </div>
 
-          <div style={{
-            transform: `scale(${lbScale}) translate(${lbOffset.x / lbScale}px, ${lbOffset.y / lbScale}px)`,
-            transition: isPinching ? 'none' : 'transform 0.3s ease',
-            willChange: 'transform',
-          }}>
-            <Cover album={album} size={300} onClick={() => {}} />
+            {/* 保存ボタン — ジャケット右下 */}
+            {album.image && lbScale < 1.1 && (
+              <button
+                onClick={() => saveSingle(album)}
+                style={{
+                  position: 'absolute', bottom: 10, right: 10,
+                  width: 36, height: 36, borderRadius: 8,
+                  background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  color: 'rgba(255,255,255,0.85)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  zIndex: 10, cursor: 'pointer', flexShrink: 0,
+                }}
+              >
+                {/* ダウンロードアイコン：線+矢印 */}
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <line x1="8" y1="1" x2="8" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  <polyline points="4,8 8,12 12,8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  <line x1="2" y1="15" x2="14" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                </svg>
+              </button>
+            )}
           </div>
 
           <div style={{

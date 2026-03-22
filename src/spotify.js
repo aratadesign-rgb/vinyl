@@ -165,9 +165,21 @@ export async function searchArtists(token, query) {
   return apiFetch(`/search?${params}`, token)
 }
 
-// Fetch related artists
-export async function fetchRelatedArtists(token, artistId) {
-  return apiFetch(`/artists/${artistId}/related-artists`, token)
+// Fetch single artist (for genre info)
+export async function fetchArtist(token, artistId) {
+  return apiFetch(`/artists/${artistId}`, token)
+}
+
+// Search artists by genre (replaces removed related-artists endpoint)
+export async function searchArtistsByGenre(token, genre, excludeName) {
+  const params = new URLSearchParams({ q: `genre:"${genre}"`, type: 'artist', limit: '8' })
+  const data = await apiFetch(`/search?${params}`, token)
+  // 同じアーティスト名は除外
+  return {
+    artists: {
+      items: (data.artists?.items || []).filter(a => a.name !== excludeName)
+    }
+  }
 }
 
 // Fetch artist's albums
