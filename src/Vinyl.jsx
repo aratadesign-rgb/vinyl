@@ -1,7 +1,10 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import {
   fetchSavedAlbums,
+  fetchFollowedArtists,
   fetchArtistAlbums,
+  fetchRelatedArtists,
+  searchArtists,
   fetchAlbum,
   getAccessToken,
   normalizeAlbum,
@@ -83,15 +86,30 @@ export default function Vinyl({ token, me }) {
   const [idx, setIdx] = useState(0)
   const [sort, setSort] = useState('track')
   const [gridMode, setGridMode] = useState(false)
+  const [gridSelecting, setGridSelecting] = useState(false)
+  const [gridSelected, setGridSelected] = useState(new Set())
+  const [saving, setSaving] = useState(false)
   const [lightbox, setLightbox] = useState(false)
   const [lbScale, setLbScale] = useState(1)
   const [lbOffset, setLbOffset] = useState({ x: 0, y: 0 })
   const [isPinching, setIsPinching] = useState(false)
 
-  // library | artist view
-  const [viewMode, setViewMode] = useState('library') // 'library' | 'artist'
-  const [libraryAlbums, setLibraryAlbums] = useState([]) // ライブラリを保持
-  const [currentArtist, setCurrentArtist] = useState(null) // { name, id }
+  // view mode
+  const [viewMode, setViewMode] = useState('library')
+  const [libraryTab, setLibraryTab] = useState('albums') // 'albums' | 'artists'
+  const [libraryAlbums, setLibraryAlbums] = useState([])
+  const [currentArtist, setCurrentArtist] = useState(null)
+  const [followedArtists, setFollowedArtists] = useState([])
+  const [loadingFollowed, setLoadingFollowed] = useState(false)
+
+  // search
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searching, setSearching] = useState(false)
+
+  // related artists
+  const [relatedArtists, setRelatedArtists] = useState([])
 
   const { ready: playerReady, isPlaying, currentTrackUri, play, pause, resume } = useSpotifyPlayer()
 
@@ -153,23 +171,23 @@ export default function Vinyl({ token, me }) {
 
   const goToArtist = useCallback(async (artistId, artistName) => {
     console.log('[Vinyl] goToArtist called:', { artistId, artistName })
-    if (!artistId) {
-      console.warn('[Vinyl] No artistId available')
-      return
-    }
+    if (!artistId) return
     setLoading(true)
     setGridMode(false)
+    setRelatedArtists([])
     try {
       const t = await getAccessToken()
-      console.log('[Vinyl] fetching artist albums for', artistId)
-      const data = await fetchArtistAlbums(t, artistId, 50)
-      console.log('[Vinyl] artist albums:', data?.items?.length)
-      const normalized = data.items.map(normalizeAlbum)
+      const [albumData, relatedData] = await Promise.all([
+        fetchArtistAlbums(t, artistId),
+        fetchRelatedArtists(t, artistId).catch(() => ({ artists: [] })),
+      ])
+      const normalized = albumData.items.map(normalizeAlbum)
       setAlbums(normalized)
       setIdx(0)
       setSort('track')
       setCurrentArtist({ id: artistId, name: artistName })
       setViewMode('artist')
+      setRelatedArtists(relatedData.artists?.slice(0, 8) || [])
       if (normalized.length > 0 && normalized[0].tracks.length === 0) {
         loadTracksFor(normalized[0].id)
       }
@@ -186,8 +204,85 @@ export default function Vinyl({ token, me }) {
     setSort('track')
     setViewMode('library')
     setCurrentArtist(null)
+    setRelatedArtists([])
     setGridMode(false)
   }, [libraryAlbums])
+
+  const loadFollowedArtists = useCallback(async () => {
+    if (followedArtists.length > 0) return // キャッシュ済み
+    setLoadingFollowed(true)
+    try {
+      const t = await getAccessToken()
+      const data = await fetchFollowedArtists(t)
+      setFollowedArtists(data.artists?.items || [])
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoadingFollowed(false)
+    }
+  }, [followedArtists.length])
+
+  // ── Download helpers ──────────────────────────────────────────────────
+
+  const downloadImage = useCallback(async (url, filename) => {
+    try {
+      // CORSを回避するためblobで取得
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      // fetchが失敗した場合は新しいタブで開く（手動保存）
+      window.open(url, '_blank')
+    }
+  }, [])
+
+  const downloadSingle = useCallback((album) => {
+    if (!album.image) return
+    const filename = `${album.artist} - ${album.title}.jpg`.replace(/[/\\?%*:|"<>]/g, '-')
+    downloadImage(album.image, filename)
+  }, [downloadImage])
+
+  const downloadSelected = useCallback(async () => {
+    setSaving(true)
+    const targets = albums.filter((a, i) => gridSelected.has(i) && a.image)
+    for (const a of targets) {
+      const filename = `${a.artist} - ${a.title}.jpg`.replace(/[/\\?%*:|"<>]/g, '-')
+      await downloadImage(a.image, filename)
+      await new Promise(r => setTimeout(r, 300)) // 連続DL間隔
+    }
+    setSaving(false)
+    setGridSelected(new Set())
+    setGridSelecting(false)
+  }, [albums, gridSelected, downloadImage])
+
+  // ── Search ────────────────────────────────────────────────────────────
+
+  const searchTimeoutRef = useRef(null)
+
+  const handleSearchInput = useCallback((val) => {
+    setSearchQuery(val)
+    if (!val.trim()) { setSearchResults([]); return }
+    clearTimeout(searchTimeoutRef.current)
+    searchTimeoutRef.current = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const t = await getAccessToken()
+        const data = await searchArtists(t, val)
+        setSearchResults(data.artists?.items || [])
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setSearching(false)
+      }
+    }, 400)
+  }, [])
 
   // ── Carousel touch ────────────────────────────────────────────────────
 
@@ -372,12 +467,40 @@ export default function Vinyl({ token, me }) {
               ← Library
             </button>
           )}
-          <div style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', opacity: 0.35, marginBottom: 5 }}>
-            {viewMode === 'artist' ? 'Discography' : (me?.display_name || 'Library')}
-          </div>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 27, fontWeight: 600, lineHeight: 1 }}>
-            {viewMode === 'artist' ? currentArtist?.name : 'Saved Albums'}
-          </div>
+          {viewMode === 'library' ? (
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', opacity: 0.35, marginBottom: 8 }}>
+                {me?.display_name || 'Library'}
+              </div>
+              {/* Albums / Artists タブ */}
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[['albums', 'Albums'], ['artists', 'Artists']].map(([key, label]) => (
+                  <button key={key} onClick={() => {
+                    setLibraryTab(key)
+                    if (key === 'artists') loadFollowedArtists()
+                  }} style={{
+                    background: libraryTab === key ? 'rgba(192,132,252,0.15)' : 'none',
+                    border: `1px solid ${libraryTab === key ? '#c084fc' : 'rgba(255,255,255,0.15)'}`,
+                    color: libraryTab === key ? '#c084fc' : 'rgba(255,255,255,0.45)',
+                    fontSize: 12, fontWeight: libraryTab === key ? 600 : 400,
+                    padding: '5px 14px', borderRadius: 100,
+                    fontFamily: "'Syne', sans-serif", cursor: 'pointer',
+                  }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', opacity: 0.35, marginBottom: 5 }}>
+                Discography
+              </div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 27, fontWeight: 600, lineHeight: 1 }}>
+                {currentArtist?.name}
+              </div>
+            </div>
+          )}
         </div>
         <button onClick={logout} style={{
           background: 'rgba(255,255,255,0.92)',
@@ -390,6 +513,74 @@ export default function Vinyl({ token, me }) {
           logout
         </button>
       </div>
+
+      {/* ── Search button ── */}
+      <div style={{ padding: '12px 22px 0', display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={() => { setSearchOpen(true); setSearchQuery(''); setSearchResults([]) }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            color: 'rgba(255,255,255,0.5)',
+            fontSize: 11, letterSpacing: 0.8, padding: '7px 16px',
+            borderRadius: 100, fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
+          }}
+        >
+          🔍 Search artists
+        </button>
+      </div>
+
+      {/* ── Artists tab: フォロー中アーティスト一覧 ── */}
+      {viewMode === 'library' && libraryTab === 'artists' && (
+        <div style={{ paddingBottom: 48 }}>
+          {loadingFollowed && <Spinner />}
+          {!loadingFollowed && followedArtists.length === 0 && (
+            <div style={{ textAlign: 'center', padding: 48, opacity: 0.3, fontSize: 12 }}>
+              No followed artists found
+            </div>
+          )}
+          {followedArtists.map(artist => (
+            <div
+              key={artist.id}
+              onClick={() => goToArtist(artist.id, artist.name)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 14,
+                padding: '12px 22px',
+                borderBottom: '1px solid rgba(255,255,255,0.04)',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{
+                width: 52, height: 52, borderRadius: '50%', flexShrink: 0,
+                background: 'rgba(255,255,255,0.06)', overflow: 'hidden',
+              }}>
+                {artist.images?.[2]?.url && (
+                  <img src={artist.images[2].url} alt={artist.name}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                )}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 500,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {artist.name}
+                </div>
+                {artist.genres?.[0] && (
+                  <div style={{ fontSize: 11, opacity: 0.35, marginTop: 2, letterSpacing: 0.5 }}>
+                    {artist.genres[0]}
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: 16, opacity: 0.2 }}>›</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Albums tab (通常のカルーセル以降) ── */}
+      {(viewMode === 'artist' || libraryTab === 'albums') && (<>
 
       {/* ── CoverFlow ── */}
       <div
@@ -465,48 +656,127 @@ export default function Vinyl({ token, me }) {
         <div style={{
           position: 'fixed', inset: 0, top: 0,
           background: '#060606', zIndex: 150,
-          overflowY: 'auto', padding: '56px 4px 32px',
+          overflowY: 'auto', padding: '56px 4px 80px',
         }}>
-          {/* 閉じるボタン */}
-          <button onClick={() => setGridMode(false)} style={{
-            position: 'fixed', top: 16, right: 16,
-            width: 36, height: 36, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.1)', border: 'none',
-            color: 'rgba(255,255,255,0.7)', fontSize: 16,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 160,
-          }}>✕</button>
-          <div style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', opacity: 0.3, textAlign: 'center', marginBottom: 16 }}>
-            {albums.length} albums
-          </div>
+          {/* ヘッダー */}
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: 3,
+            position: 'fixed', top: 0, left: 0, right: 0,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '14px 16px', background: 'rgba(6,6,6,0.95)',
+            backdropFilter: 'blur(12px)', zIndex: 160,
           }}>
-            {albums.map((a, i) => (
-              <div
-                key={a.id}
-                onClick={() => { setIdx(i); setGridMode(false); if (a.tracks.length === 0) loadTracksFor(a.id) }}
+            <button onClick={() => {
+              setGridMode(false)
+              setGridSelecting(false)
+              setGridSelected(new Set())
+            }} style={{
+              background: 'none', border: 'none',
+              color: 'rgba(255,255,255,0.6)', fontSize: 13, letterSpacing: 0.5,
+              fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
+            }}>✕ Close</button>
+
+            <div style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', opacity: 0.3 }}>
+              {gridSelecting ? `${gridSelected.size} selected` : `${albums.length} albums`}
+            </div>
+
+            <button onClick={() => {
+              setGridSelecting(s => !s)
+              setGridSelected(new Set())
+            }} style={{
+              background: gridSelecting ? 'rgba(192,132,252,0.15)' : 'none',
+              border: `1px solid ${gridSelecting ? '#c084fc' : 'rgba(255,255,255,0.15)'}`,
+              color: gridSelecting ? '#c084fc' : 'rgba(255,255,255,0.5)',
+              fontSize: 11, letterSpacing: 0.5, padding: '5px 12px', borderRadius: 100,
+              fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
+            }}>
+              {gridSelecting ? 'Cancel' : 'Select'}
+            </button>
+          </div>
+
+          {/* グリッド */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
+            {albums.map((a, i) => {
+              const selected = gridSelected.has(i)
+              return (
+                <div
+                  key={a.id}
+                  onClick={() => {
+                    if (gridSelecting) {
+                      setGridSelected(prev => {
+                        const next = new Set(prev)
+                        next.has(i) ? next.delete(i) : next.add(i)
+                        return next
+                      })
+                    } else {
+                      setIdx(i); setGridMode(false)
+                      if (a.tracks.length === 0) loadTracksFor(a.id)
+                    }
+                  }}
+                  style={{
+                    aspectRatio: '1', position: 'relative', overflow: 'hidden',
+                    cursor: 'pointer',
+                    outline: !gridSelecting && i === idx ? '2px solid #c084fc' : 'none',
+                    outlineOffset: -2,
+                  }}
+                >
+                  {a.image
+                    ? <img src={a.imageMd || a.image} alt={a.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} loading="lazy" />
+                    : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(145deg,#1a0a2e,#3a0a5e)', display: 'flex', alignItems: 'flex-end', padding: 6 }}>
+                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', lineHeight: 1.2, fontFamily: "'Syne',sans-serif" }}>{a.title}</div>
+                      </div>
+                  }
+                  {/* 選択オーバーレイ */}
+                  {gridSelecting && (
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      background: selected ? 'rgba(192,132,252,0.35)' : 'rgba(0,0,0,0.25)',
+                      display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
+                      padding: 6,
+                    }}>
+                      <div style={{
+                        width: 20, height: 20, borderRadius: '50%',
+                        background: selected ? '#c084fc' : 'rgba(255,255,255,0.25)',
+                        border: `2px solid ${selected ? '#c084fc' : 'rgba(255,255,255,0.5)'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 11, color: '#fff',
+                      }}>
+                        {selected ? '✓' : ''}
+                      </div>
+                    </div>
+                  )}
+                  {!gridSelecting && i === idx && (
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(192,132,252,0.15)' }} />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* 一括保存ボタン */}
+          {gridSelecting && gridSelected.size > 0 && (
+            <div style={{
+              position: 'fixed', bottom: 0, left: 0, right: 0,
+              padding: '12px 20px 32px',
+              background: 'rgba(6,6,6,0.97)', backdropFilter: 'blur(16px)',
+              borderTop: '1px solid rgba(192,132,252,0.2)',
+              zIndex: 170,
+            }}>
+              <button
+                onClick={downloadSelected}
+                disabled={saving}
                 style={{
-                  aspectRatio: '1', position: 'relative', overflow: 'hidden',
-                  cursor: 'pointer',
-                  outline: i === idx ? '2px solid #c084fc' : 'none',
-                  outlineOffset: -2,
+                  width: '100%', padding: '14px',
+                  background: saving ? 'rgba(192,132,252,0.3)' : '#c084fc',
+                  border: 'none', borderRadius: 12,
+                  color: saving ? 'rgba(255,255,255,0.5)' : '#000',
+                  fontSize: 14, fontWeight: 600,
+                  fontFamily: "'DM Sans', sans-serif", cursor: saving ? 'default' : 'pointer',
                 }}
               >
-                {a.image
-                  ? <img src={a.imageMd || a.image} alt={a.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} loading="lazy" />
-                  : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(145deg,#1a0a2e,#3a0a5e)', display: 'flex', alignItems: 'flex-end', padding: 6 }}>
-                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', lineHeight: 1.2, fontFamily: "'Syne',sans-serif" }}>{a.title}</div>
-                    </div>
-                }
-                {i === idx && (
-                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(192,132,252,0.15)' }} />
-                )}
-              </div>
-            ))}
-          </div>
+                {saving ? `Saving... (${gridSelected.size})` : `↓ Save ${gridSelected.size} covers`}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -657,6 +927,60 @@ export default function Vinyl({ token, me }) {
           </button>
         )}
       </div>
+
+      {/* ── Related Artists ── */}
+      {viewMode === 'artist' && relatedArtists.length > 0 && (
+        <div style={{ padding: '0 0 48px' }}>
+          <div style={{
+            fontSize: 10, letterSpacing: 3, textTransform: 'uppercase',
+            opacity: 0.3, padding: '0 22px 14px',
+          }}>
+            Related Artists
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {relatedArtists.map(artist => (
+              <div
+                key={artist.id}
+                onClick={() => goToArtist(artist.id, artist.name)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '10px 22px',
+                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  cursor: 'pointer',
+                }}
+              >
+                {/* アーティスト画像 */}
+                <div style={{
+                  width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                  background: 'rgba(255,255,255,0.06)', overflow: 'hidden',
+                }}>
+                  {artist.images?.[2]?.url && (
+                    <img src={artist.images[2].url} alt={artist.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 500,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {artist.name}
+                  </div>
+                  {artist.genres?.[0] && (
+                    <div style={{ fontSize: 10, opacity: 0.38, marginTop: 2, letterSpacing: 0.5 }}>
+                      {artist.genres[0]}
+                    </div>
+                  )}
+                </div>
+                <div style={{ fontSize: 14, opacity: 0.2 }}>›</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      </>) /* end albums tab */}
+
       {currentTrackUri && playingTrack && album && (
         <div style={{
           position: 'fixed', bottom: 0, left: 0, right: 0,
@@ -687,6 +1011,103 @@ export default function Vinyl({ token, me }) {
         </div>
       )}
 
+      {/* ── Search modal ── */}
+      {searchOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(6,6,6,0.98)',
+          zIndex: 400, display: 'flex', flexDirection: 'column',
+          padding: '0 0 32px',
+        }}>
+          {/* 検索バー */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '52px 16px 16px',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            <div style={{
+              flex: 1, display: 'flex', alignItems: 'center', gap: 10,
+              background: 'rgba(255,255,255,0.07)', borderRadius: 12,
+              padding: '10px 16px',
+            }}>
+              <span style={{ opacity: 0.4, fontSize: 15 }}>🔍</span>
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={e => handleSearchInput(e.target.value)}
+                placeholder="Artist name..."
+                style={{
+                  flex: 1, background: 'none', border: 'none', outline: 'none',
+                  color: '#ede8de', fontSize: 16,
+                  fontFamily: "'DM Sans', sans-serif",
+                }}
+              />
+              {searchQuery && (
+                <button onClick={() => { setSearchQuery(''); setSearchResults([]) }}
+                  style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 16, cursor: 'pointer' }}>
+                  ✕
+                </button>
+              )}
+            </div>
+            <button onClick={() => setSearchOpen(false)} style={{
+              background: 'none', border: 'none',
+              color: 'rgba(255,255,255,0.5)', fontSize: 13,
+              fontFamily: "'DM Sans', sans-serif", cursor: 'pointer', padding: '0 4px',
+            }}>
+              Cancel
+            </button>
+          </div>
+
+          {/* 結果一覧 */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {searching && (
+              <div style={{ padding: 32, textAlign: 'center', opacity: 0.3, fontSize: 12 }}>Searching...</div>
+            )}
+            {!searching && searchResults.map(artist => (
+              <div
+                key={artist.id}
+                onClick={() => {
+                  setSearchOpen(false)
+                  goToArtist(artist.id, artist.name)
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '12px 20px',
+                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{
+                  width: 52, height: 52, borderRadius: '50%', flexShrink: 0,
+                  background: 'rgba(255,255,255,0.06)', overflow: 'hidden',
+                }}>
+                  {artist.images?.[2]?.url && (
+                    <img src={artist.images[2].url} alt={artist.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontFamily: "'Syne', sans-serif", fontSize: 17, fontWeight: 500,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {artist.name}
+                  </div>
+                  {artist.genres?.[0] && (
+                    <div style={{ fontSize: 11, opacity: 0.35, marginTop: 3, letterSpacing: 0.5 }}>
+                      {artist.genres[0]}
+                    </div>
+                  )}
+                </div>
+                <div style={{ fontSize: 16, opacity: 0.2 }}>›</div>
+              </div>
+            ))}
+            {!searching && searchQuery && searchResults.length === 0 && (
+              <div style={{ padding: 32, textAlign: 'center', opacity: 0.3, fontSize: 12 }}>No results</div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Lightbox ── */}
       {lightbox && album && (
         <div
@@ -712,6 +1133,20 @@ export default function Vinyl({ token, me }) {
             color: 'rgba(255,255,255,0.75)', fontSize: 15,
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10,
           }}>✕</button>
+
+          {/* 保存ボタン */}
+          {album.image && (
+            <button
+              onClick={() => downloadSingle(album)}
+              style={{
+                position: 'absolute', top: 52, left: 22,
+                width: 38, height: 38, borderRadius: '50%',
+                background: 'rgba(255,255,255,0.08)',
+                color: 'rgba(255,255,255,0.75)', fontSize: 16,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10,
+              }}
+            >↓</button>
+          )}
 
           <div style={{
             transform: `scale(${lbScale}) translate(${lbOffset.x / lbScale}px, ${lbOffset.y / lbScale}px)`,

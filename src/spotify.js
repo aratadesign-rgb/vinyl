@@ -154,6 +154,22 @@ export async function fetchSavedAlbums(token, limit = 50, offset = 0) {
   return apiFetch(`/me/albums?limit=${limit}&offset=${offset}&market=JP`, token)
 }
 
+// Fetch followed artists
+export async function fetchFollowedArtists(token) {
+  return apiFetch(`/me/following?type=artist&limit=10`, token)
+}
+
+// Search artists
+export async function searchArtists(token, query) {
+  const params = new URLSearchParams({ q: query, type: 'artist', limit: '8' })
+  return apiFetch(`/search?${params}`, token)
+}
+
+// Fetch related artists
+export async function fetchRelatedArtists(token, artistId) {
+  return apiFetch(`/artists/${artistId}/related-artists`, token)
+}
+
 // Fetch artist's albums
 export async function fetchArtistAlbums(token, artistId) {
   // Development modeではlimitの最大値が10
