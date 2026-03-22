@@ -8,6 +8,7 @@ export const REDIRECT_URI = window.location.hostname === 'localhost' || window.l
 
 const SCOPES = [
   'user-library-read',
+  'user-follow-read',
   'user-read-playback-state',
   'user-modify-playback-state',
   'user-read-currently-playing',

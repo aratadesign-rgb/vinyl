@@ -1215,7 +1215,7 @@ export default function Vinyl({ token, me }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10,
           }}>✕</button>
 
-          <div style={{ position: 'relative', display: 'inline-block' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
             <div style={{
               transform: `scale(${lbScale}) translate(${lbOffset.x / lbScale}px, ${lbOffset.y / lbScale}px)`,
               transition: isPinching ? 'none' : 'transform 0.3s ease',
@@ -1224,26 +1224,25 @@ export default function Vinyl({ token, me }) {
               <Cover album={album} size={300} onClick={() => {}} />
             </div>
 
-            {/* 保存ボタン — ジャケット右下 */}
+            {/* 保存ボタン — ジャケット直下 */}
             {album.image && lbScale < 1.1 && (
               <button
                 onClick={() => saveSingle(album)}
                 style={{
-                  position: 'absolute', bottom: 10, right: 10,
-                  width: 36, height: 36, borderRadius: 8,
-                  background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  color: 'rgba(255,255,255,0.85)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  zIndex: 10, cursor: 'pointer', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: 100, padding: '9px 22px',
+                  color: 'rgba(255,255,255,0.75)', cursor: 'pointer',
+                  fontFamily: "'DM Sans', sans-serif", fontSize: 12, letterSpacing: 0.8,
                 }}
               >
-                {/* ダウンロードアイコン：線+矢印 */}
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                   <line x1="8" y1="1" x2="8" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                   <polyline points="4,8 8,12 12,8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                   <line x1="2" y1="15" x2="14" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
+                Save cover
               </button>
             )}
           </div>
