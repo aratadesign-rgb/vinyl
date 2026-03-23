@@ -190,6 +190,7 @@ export default function Vinyl({ token, me }) {
       setViewMode('artist')
       // ジャンルがあれば同ジャンルのアーティストを非同期で検索
       const genre = artistData?.genres?.[0]
+      console.log('[Vinyl] artist genres:', artistData?.genres, '→ using:', genre)
       if (genre) {
         searchArtistsByGenre(t, genre, artistName)
           .then(data => setRelatedArtists(data.artists?.items || []))

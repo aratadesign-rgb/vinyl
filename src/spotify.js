@@ -173,13 +173,17 @@ export async function fetchArtist(token, artistId) {
 
 // Search artists by genre (replaces removed related-artists endpoint)
 export async function searchArtistsByGenre(token, genre, excludeName) {
-  const params = new URLSearchParams({ q: `genre:"${genre}"`, type: 'artist', limit: '8' })
-  const data = await apiFetch(`/search?${params}`, token)
-  // 同じアーティスト名は除外
-  return {
-    artists: {
-      items: (data.artists?.items || []).filter(a => a.name !== excludeName)
-    }
+  // ダブルクォートなしでジャンル検索（URLエンコード問題を回避）
+  const params = new URLSearchParams({ q: `genre:${genre}`, type: 'artist', limit: '8' })
+  console.log('[Vinyl] genre search:', genre, params.toString())
+  try {
+    const data = await apiFetch(`/search?${params}`, token)
+    const items = (data.artists?.items || []).filter(a => a.name !== excludeName)
+    console.log('[Vinyl] genre results:', items.length)
+    return { artists: { items } }
+  } catch (e) {
+    console.error('[Vinyl] genre search error:', e)
+    return { artists: { items: [] } }
   }
 }
 
