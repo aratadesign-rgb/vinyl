@@ -191,11 +191,11 @@ export default function Vinyl({ token, me }) {
       // ジャンルがあれば同ジャンルのアーティストを非同期で検索
       const genre = artistData?.genres?.[0]
       console.log('[Vinyl] artist genres:', artistData?.genres, '→ using:', genre)
-      if (genre) {
-        searchArtistsByGenre(t, genre, artistName)
-          .then(data => setRelatedArtists(data.artists?.items || []))
-          .catch(() => {})
-      }
+      // ジャンルがあればジャンル検索、なければアーティスト名で類似検索
+      const searchQuery = genre ? `genre:${genre}` : artistName
+      searchArtistsByGenre(t, searchQuery, artistName, !genre)
+        .then(data => setRelatedArtists(data.artists?.items || []))
+        .catch(() => {})
       if (normalized.length > 0 && normalized[0].tracks.length === 0) {
         loadTracksFor(normalized[0].id)
       }
@@ -942,7 +942,7 @@ export default function Vinyl({ token, me }) {
           }}>
             {currentArtist?.genres?.[0]
               ? `More ${currentArtist.genres[0]}`
-              : 'Similar Artists'}
+              : `Similar to ${currentArtist?.name?.split(' ')[0] || ''}`}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {relatedArtists.map(artist => (
